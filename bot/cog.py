@@ -12,10 +12,20 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .config import SESSIONS_DIR
+from .config import RECORDER_ROLE_NAME, SESSIONS_DIR
 from .recorder import RecordingSession
 
 log = logging.getLogger(__name__)
+
+
+def _has_permission(member: discord.Member, role_name: str | None) -> bool:
+    """Return True if member is allowed to manage recordings.
+
+    When RECORDER_ROLE_NAME is not configured every member is allowed.
+    """
+    if not role_name:
+        return True
+    return any(getattr(r, "name", None) == role_name for r in getattr(member, "roles", []))
 
 
 class RecordCog(commands.Cog):
@@ -39,6 +49,14 @@ class RecordCog(commands.Cog):
     async def record_start(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=False, thinking=True)
 
+        member = interaction.guild.get_member(interaction.user.id)
+        if not _has_permission(member, RECORDER_ROLE_NAME):
+            await interaction.followup.send(
+                "❌ You don't have permission to start recordings. "
+                f"Required role: **{RECORDER_ROLE_NAME}**"
+            )
+            return
+
         guild_id = interaction.guild_id
         if guild_id in self._sessions:
             await interaction.followup.send(
@@ -47,7 +65,6 @@ class RecordCog(commands.Cog):
             )
             return
 
-        member = interaction.guild.get_member(interaction.user.id)
         if not member or not member.voice or not member.voice.channel:
             await interaction.followup.send(
                 "❌ You must be in a voice channel to start recording."
@@ -78,6 +95,14 @@ class RecordCog(commands.Cog):
     @record.command(name="stop", description="Stop recording and export FLAC files per speaker")
     async def record_stop(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=False, thinking=True)
+
+        member = interaction.guild.get_member(interaction.user.id)
+        if not _has_permission(member, RECORDER_ROLE_NAME):
+            await interaction.followup.send(
+                "❌ You don't have permission to stop recordings. "
+                f"Required role: **{RECORDER_ROLE_NAME}**"
+            )
+            return
 
         guild_id = interaction.guild_id
         session = self._sessions.pop(guild_id, None)
