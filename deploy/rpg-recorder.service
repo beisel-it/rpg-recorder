@@ -1,0 +1,31 @@
+[Unit]
+Description=RPG Recorder Discord Bot
+Documentation=https://github.com/yourorg/rpg-recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rpg-recorder
+Group=rpg-recorder
+WorkingDirectory=/opt/rpg-recorder
+ExecStart=/opt/rpg-recorder/venv/bin/python -m bot
+EnvironmentFile=/opt/rpg-recorder/.env
+
+# Restart on crash with a short back-off; systemd won't loop infinitely
+# (default StartLimitBurst=5 within StartLimitIntervalSec=10s)
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+# Redirect logs to journald  →  journalctl -u rpg-recorder -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rpg-recorder
+
+# Graceful stop: let ongoing ffmpeg finalization finish (up to 120 s)
+TimeoutStopSec=120s
+
+[Install]
+WantedBy=multi-user.target

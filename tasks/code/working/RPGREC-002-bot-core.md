@@ -1,7 +1,7 @@
 # Task: Discord Bot Core — /record start/stop
 Shortcode: RPGREC-002
 Stage: code
-Status: ready for code
+Status: complete
 Priority: P1
 Assigned: Wilbur (Code Manager)
 Depends: RPGREC-001 ✅, RPGREC-005 ✅

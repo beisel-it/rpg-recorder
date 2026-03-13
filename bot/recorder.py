@@ -7,14 +7,17 @@ Key design choices (per RPGREC-001/005 research):
 - Reconnect watchdog with exponential back-off handles voice disconnects
 - Health monitor logs KB/min per speaker, warns on >60 s silence
 - FLAC conversion via ffmpeg subprocess after session ends
+- metadata.json written on session stop (start/end/duration/speakers)
 """
 
 import asyncio
+import json
 import logging
 import threading
 import time
 import wave
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -268,7 +271,30 @@ class RecordingSession:
                 pass
 
         self.sink.cleanup()
-        return await self.sink.finalize(self.session_dir)
+        flac_paths = await self.sink.finalize(self.session_dir)
+        self._write_metadata(flac_paths)
+        return flac_paths
+
+    def _write_metadata(self, flac_paths: list[Path]) -> None:
+        end_time = time.time()
+        duration_secs = int(end_time - self.start_time)
+        with self.sink._lock:
+            speakers = [
+                {"user_id": sp.user_id, "username": sp.username}
+                for sp in self.sink._speakers.values()
+            ]
+        meta = {
+            "session": self.session_dir.name,
+            "started_at": datetime.fromtimestamp(self.start_time, tz=timezone.utc).isoformat(),
+            "ended_at": datetime.fromtimestamp(end_time, tz=timezone.utc).isoformat(),
+            "duration_seconds": duration_secs,
+            "channel": self.channel.name,
+            "speakers": speakers,
+            "flac_files": [p.name for p in flac_paths],
+        }
+        meta_path = self.session_dir / "metadata.json"
+        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+        log.info("Metadata written → %s", meta_path)
 
     def duration_str(self) -> str:
         secs = int(time.time() - self.start_time)
