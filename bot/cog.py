@@ -13,6 +13,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from .config import RECORDER_ROLE_NAME, SESSIONS_DIR
+from .pipeline import enqueue_pipeline
 from .recorder import RecordingSession
 
 log = logging.getLogger(__name__)
@@ -130,6 +131,7 @@ class RecordCog(commands.Cog):
                 f"Duration: **{duration}** | Speakers: **{len(flac_paths)}**\n"
                 f"{files_list}"
             )
+            enqueue_pipeline(session.session_dir, flac_paths, interaction.channel)
         else:
             await interaction.followup.send(
                 f"⚠️ Session ended but no audio was captured "
