@@ -10,6 +10,9 @@ dependencies = [
     "discord.py[voice]>=2.4.0",
     "discord-ext-voice-recv>=0.4.2a145",
     "python-dotenv>=1.0.0",
+    "faster-whisper>=1.0.0",
+    "soundfile>=0.12.0",
+    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]

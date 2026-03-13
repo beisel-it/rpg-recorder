@@ -16,6 +16,39 @@ import os
 os.environ.setdefault("DISCORD_TOKEN", "test-token-ci")
 os.environ.setdefault("SESSIONS_DIR", "/tmp/rpg-test-sessions")
 
+# Stub heavy ML/audio packages so transcribe.py tests work without real installs
+import sys
+from unittest.mock import MagicMock
+import numpy as _np_real  # may fail — stub if missing
+if "faster_whisper" not in sys.modules:
+    sys.modules["faster_whisper"] = MagicMock()
+sys.modules["faster_whisper"].WhisperModel = MagicMock
+# soundfile.read must return a real array-like + sample_rate
+# so that audio.ndim, len(audio), audio.mean() etc. work in transcribe.py
+class _FakeAudio:
+    """Minimal numpy array stub: 1D float32, 48000 samples (1 second)."""
+    ndim = 1
+    shape = (48000,)
+    dtype = "float32"
+    def __len__(self): return 48000
+    size = 48000
+    def mean(self, axis=None): return _FakeAudio()
+    def __getitem__(self, key): return _FakeAudio()
+    def reshape(self, *a, **kw): return self
+    def astype(self, *a, **kw): return self
+
+if "soundfile" not in sys.modules:
+    _sf_mock = MagicMock()
+    _sf_mock.read = MagicMock(return_value=(_FakeAudio(), 48000))
+    sys.modules["soundfile"] = _sf_mock
+
+# numpy: use real if available, else stub
+try:
+    import numpy  # noqa: F401
+except ModuleNotFoundError:
+    sys.modules["numpy"] = MagicMock()
+
+
 import sys
 import types
 from unittest.mock import MagicMock

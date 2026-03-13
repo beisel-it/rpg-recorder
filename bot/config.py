@@ -35,6 +35,10 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 # Set to None (unset) to allow everyone.
 RECORDER_ROLE_NAME: str | None = os.getenv("RECORDER_ROLE_NAME") or None
 
+# Whisper transcription settings (RPGREC-003a)
+WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "large-v3-turbo")
+WHISPER_INITIAL_PROMPT: str | None = os.getenv("WHISPER_INITIAL_PROMPT") or None
+
 
 # ---------------------------------------------------------------------------
 # Typed Config object
@@ -47,6 +51,8 @@ class Config:
     sessions_dir: Path
     log_level: str
     recorder_role_name: str | None
+    whisper_model: str
+    whisper_initial_prompt: str | None
 
 
 config = Config(
@@ -55,4 +61,6 @@ config = Config(
     sessions_dir=SESSIONS_DIR,
     log_level=LOG_LEVEL,
     recorder_role_name=RECORDER_ROLE_NAME,
+    whisper_model=WHISPER_MODEL,
+    whisper_initial_prompt=WHISPER_INITIAL_PROMPT,
 )
