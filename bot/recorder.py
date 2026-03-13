@@ -147,6 +147,25 @@ class ChunkedFileSink(voice_recv.AudioSink):
                 for sp in self._speakers.values()
             }
 
+    def fill_silence(self, duration_secs: float) -> None:
+        """Write silence PCM to all tracked speakers to cover a reconnect gap.
+
+        Keeps every speaker's timeline contiguous so there is no time-offset
+        after a reconnect.  Called from the async watchdog — safe to call with
+        no speakers (no-op).
+        """
+        n_bytes = int(duration_secs * BYTES_PER_SEC)
+        if n_bytes <= 0:
+            return
+        silence = bytes(n_bytes)
+        with self._lock:
+            for sp in self._speakers.values():
+                sp.write(silence)
+        log.info(
+            "Filled %.1fs silence gap (%d B) for %d speaker(s)",
+            duration_secs, n_bytes, len(self._speakers),
+        )
+
     def speaker_count(self) -> int:
         with self._lock:
             return len(self._speakers)
@@ -219,18 +238,25 @@ class RecordingSession:
     _HEALTH_INTERVAL   = 60   # seconds between health log entries
     _SILENT_THRESHOLD  = 60   # seconds of speaker silence before warning
 
-    def __init__(self, channel: discord.VoiceChannel, sessions_dir: Path) -> None:
+    def __init__(
+        self,
+        channel: discord.VoiceChannel,
+        sessions_dir: Path,
+        notify_channel=None,
+    ) -> None:
         ts = int(time.time())
         self.session_dir = sessions_dir / f"session-{ts}"
         self.session_dir.mkdir(parents=True, exist_ok=True)
         chunk_dir = self.session_dir / "chunks"
         self.sink = ChunkedFileSink(chunk_dir)
         self.channel = channel
+        self.notify_channel = notify_channel   # discord.abc.Messageable or None
         self.start_time = time.time()
         self.vc: Optional[voice_recv.VoiceRecvClient] = None
         self._active = False
         self._watchdog_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
+        self._warned_silent: set[str] = set()  # speakers already warned this silence window
 
     async def start(self) -> None:
         self.vc = await self.channel.connect(cls=voice_recv.VoiceRecvClient)
@@ -305,17 +331,34 @@ class RecordingSession:
     # Background tasks ------------------------------------------------------
 
     async def _watchdog(self) -> None:
-        """Reconnect to voice channel on disconnect, with exponential back-off."""
+        """Reconnect to voice channel on disconnect, with exponential back-off.
+
+        On each successful reconnect:
+        - Fills the audio gap with silence so speaker timelines stay contiguous.
+        - Sends a Discord notification to notify_channel (if set).
+        """
         while self._active:
             await asyncio.sleep(self._WATCHDOG_INTERVAL)
             if not self.vc or self.vc.is_connected():
                 continue
             log.warning("Voice connection lost — reconnecting to #%s", self.channel.name)
+            disconnect_at = time.monotonic()
             for attempt in range(6):
                 try:
                     self.vc = await self.channel.connect(cls=voice_recv.VoiceRecvClient)
                     self.vc.listen(self.sink)
-                    log.info("Reconnected (attempt %d)", attempt + 1)
+                    gap_secs = time.monotonic() - disconnect_at
+                    self.sink.fill_silence(gap_secs)
+                    log.info(
+                        "Reconnected (attempt %d) — filled %.1fs silence gap",
+                        attempt + 1, gap_secs,
+                    )
+                    if self.notify_channel:
+                        asyncio.create_task(
+                            self.notify_channel.send(
+                                "⚠️ Verbindung kurz unterbrochen — Aufnahme läuft weiter"
+                            )
+                        )
                     break
                 except Exception as exc:
                     wait = min(2 ** attempt, 60)
@@ -328,15 +371,28 @@ class RecordingSession:
                 log.error("All reconnect attempts failed for #%s", self.channel.name)
 
     async def _health_loop(self) -> None:
-        """Log per-speaker KB/min every minute; warn on prolonged silence."""
+        """Log per-speaker KB/min every minute; warn on prolonged silence.
+
+        Sends a one-shot Discord warning when a speaker first crosses the
+        silence threshold.  Resets the warning when the speaker is active again
+        so a second silence window triggers another notification.
+        """
         while self._active:
             await asyncio.sleep(self._HEALTH_INTERVAL)
             for name, stats in self.sink.health().items():
                 silent = stats["silent_secs"]
                 if silent > self._SILENT_THRESHOLD:
-                    log.warning(
-                        "[health] %s: no audio for %.0fs", name, silent
-                    )
+                    log.warning("[health] %s: no audio for %.0fs", name, silent)
+                    if name not in self._warned_silent and self.notify_channel:
+                        self._warned_silent.add(name)
+                        asyncio.create_task(
+                            self.notify_channel.send(
+                                f"⚠️ **{name}** sendet seit {silent:.0f}s kein Audio."
+                            )
+                        )
+                else:
+                    # Speaker active again — allow future warnings
+                    self._warned_silent.discard(name)
                 log.info(
                     "[health] %s: %.1f KB/min  chunks=%d  silent=%.0fs",
                     name, stats["kbpm"], stats["chunks"], silent,

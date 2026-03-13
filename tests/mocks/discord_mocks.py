@@ -105,6 +105,7 @@ class MockInteraction:
         guild_id: int = 9999,
         user_id: int = 1001,
         voice_channel: MockVoiceChannel | None = None,
+        text_channel: Any | None = None,
     ) -> None:
         self.guild_id = guild_id
 
@@ -119,6 +120,9 @@ class MockInteraction:
         _guild = MagicMock()
         _guild.get_member = MagicMock(return_value=_member)
         self.guild = _guild
+
+        # Mimic interaction.channel (text channel where command was invoked)
+        self.channel = text_channel if text_channel is not None else MagicMock()
 
         # Capture sent messages
         self.sent_messages: list[str] = []

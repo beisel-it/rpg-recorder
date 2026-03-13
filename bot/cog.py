@@ -74,7 +74,7 @@ class RecordCog(commands.Cog):
         channel = member.voice.channel
 
         try:
-            session = RecordingSession(channel, SESSIONS_DIR)
+            session = RecordingSession(channel, SESSIONS_DIR, notify_channel=interaction.channel)
             await session.start()
         except Exception as exc:
             log.exception("Failed to start recording in #%s", channel.name)

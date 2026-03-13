@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from bot.recorder import RecordingSession, ChunkedFileSink
+from bot.recorder import RecordingSession, ChunkedFileSink, BYTES_PER_SEC
+from tests.mocks.discord_mocks import MockUser, MockVoiceData
 
 
 def _make_channel(name: str = "test-channel") -> MagicMock:
@@ -215,3 +216,280 @@ class TestHealthLoop:
             await session._health_loop()
 
         assert calls >= 1
+
+    @pytest.mark.asyncio
+    async def test_health_loop_sends_discord_warning_on_silence(self, tmp_path):
+        """Speaker silent >60s → Discord message sent via notify_channel."""
+        notify_ch = MagicMock()
+        notify_ch.send = AsyncMock()
+
+        session = RecordingSession(_make_channel(), tmp_path, notify_channel=notify_ch)
+        session._active = True
+        session._HEALTH_INTERVAL = 0
+
+        user = MockUser(user_id=1, name="Bob")
+        data = MockVoiceData(b"\x00" * 192)
+        # inject speaker with old last_audio_at to simulate long silence
+        session.sink.write(user, data)
+        session.sink._speakers[1].last_audio_at = time.monotonic() - 120
+
+        calls = 0
+
+        async def fake_sleep(s):
+            nonlocal calls
+            calls += 1
+            if calls >= 2:
+                session._active = False
+
+        with patch("asyncio.sleep", new=fake_sleep):
+            await session._health_loop()
+
+        # Allow any created tasks to run
+        await asyncio.sleep(0)
+        notify_ch.send.assert_called_once()
+        msg = notify_ch.send.call_args[0][0]
+        assert "Bob" in msg
+
+    @pytest.mark.asyncio
+    async def test_health_loop_deduplicates_warnings(self, tmp_path):
+        """Second health tick should NOT send a second Discord warning."""
+        notify_ch = MagicMock()
+        notify_ch.send = AsyncMock()
+
+        session = RecordingSession(_make_channel(), tmp_path, notify_channel=notify_ch)
+        session._active = True
+        session._HEALTH_INTERVAL = 0
+
+        user = MockUser(user_id=2, name="Carol")
+        data = MockVoiceData(b"\x00" * 192)
+        session.sink.write(user, data)
+        session.sink._speakers[2].last_audio_at = time.monotonic() - 120
+
+        calls = 0
+
+        async def fake_sleep(s):
+            nonlocal calls
+            calls += 1
+            if calls >= 3:  # run two health ticks
+                session._active = False
+
+        with patch("asyncio.sleep", new=fake_sleep):
+            await session._health_loop()
+
+        await asyncio.sleep(0)
+        # Only one warning despite two ticks
+        assert notify_ch.send.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_health_loop_resets_warning_on_activity(self, tmp_path):
+        """After speaker becomes active again, warning state is cleared."""
+        notify_ch = MagicMock()
+        notify_ch.send = AsyncMock()
+
+        session = RecordingSession(_make_channel(), tmp_path, notify_channel=notify_ch)
+        session._active = True
+        session._HEALTH_INTERVAL = 0
+
+        user = MockUser(user_id=3, name="Dave")
+        data = MockVoiceData(b"\x00" * 192)
+        session.sink.write(user, data)
+        session.sink._speakers[3].last_audio_at = time.monotonic() - 120
+
+        tick = 0
+
+        async def fake_sleep(s):
+            nonlocal tick
+            tick += 1
+            if tick == 2:
+                # Simulate speaker becoming active between ticks
+                session.sink._speakers[3].last_audio_at = time.monotonic()
+            if tick >= 4:
+                # Go silent again — should warn a second time now
+                session.sink._speakers[3].last_audio_at = time.monotonic() - 120
+                session._active = False
+
+        with patch("asyncio.sleep", new=fake_sleep):
+            await session._health_loop()
+
+        await asyncio.sleep(0)
+        # Warning fired at tick 1 (silent), cleared at tick 2 (active),
+        # warning refired at tick 4 (silent again) — 2 total
+        assert notify_ch.send.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_health_loop_no_discord_without_notify_channel(self, tmp_path):
+        """No notify_channel → no crash, just log."""
+        session = RecordingSession(_make_channel(), tmp_path)  # no notify_channel
+        session._active = True
+        session._HEALTH_INTERVAL = 0
+
+        user = MockUser(user_id=4, name="Eve")
+        data = MockVoiceData(b"\x00" * 192)
+        session.sink.write(user, data)
+        session.sink._speakers[4].last_audio_at = time.monotonic() - 120
+
+        calls = 0
+
+        async def fake_sleep(s):
+            nonlocal calls
+            calls += 1
+            if calls >= 2:
+                session._active = False
+
+        # Should not raise
+        with patch("asyncio.sleep", new=fake_sleep):
+            await session._health_loop()
+
+
+# ---------------------------------------------------------------------------
+# fill_silence
+# ---------------------------------------------------------------------------
+
+class TestFillSilence:
+    def test_fill_silence_writes_bytes_to_speakers(self, tmp_path):
+        """fill_silence() writes the expected byte count to each tracked speaker."""
+        chunk_dir = tmp_path / "chunks"
+        sink = ChunkedFileSink(chunk_dir)
+
+        user = MockUser(user_id=10, name="Alice")
+        data = MockVoiceData(b"\x00" * 192)
+        sink.write(user, data)
+        before = sink._speakers[10].total_bytes
+
+        sink.fill_silence(1.0)  # 1 second = BYTES_PER_SEC bytes
+
+        after = sink._speakers[10].total_bytes
+        assert after - before == BYTES_PER_SEC
+
+    def test_fill_silence_no_speakers_is_noop(self, tmp_path):
+        """fill_silence() with no speakers should not raise."""
+        sink = ChunkedFileSink(tmp_path / "chunks")
+        sink.fill_silence(5.0)  # no crash
+
+    def test_fill_silence_zero_duration_is_noop(self, tmp_path):
+        """fill_silence(0) writes nothing."""
+        chunk_dir = tmp_path / "chunks"
+        sink = ChunkedFileSink(chunk_dir)
+        user = MockUser(user_id=11, name="Bob")
+        data = MockVoiceData(b"\x00" * 192)
+        sink.write(user, data)
+        before = sink._speakers[11].total_bytes
+
+        sink.fill_silence(0.0)
+
+        assert sink._speakers[11].total_bytes == before
+
+    def test_fill_silence_multiple_speakers(self, tmp_path):
+        """fill_silence() fills all tracked speakers."""
+        chunk_dir = tmp_path / "chunks"
+        sink = ChunkedFileSink(chunk_dir)
+
+        for uid, name in [(20, "X"), (21, "Y")]:
+            sink.write(MockUser(user_id=uid, name=name), MockVoiceData(b"\x00" * 192))
+
+        sink.fill_silence(2.0)
+
+        expected = 192 + 2 * BYTES_PER_SEC
+        assert sink._speakers[20].total_bytes == expected
+        assert sink._speakers[21].total_bytes == expected
+
+
+# ---------------------------------------------------------------------------
+# Watchdog — new reconnect features
+# ---------------------------------------------------------------------------
+
+class TestWatchdogReconnect:
+    @pytest.mark.asyncio
+    async def test_watchdog_fills_silence_on_reconnect(self, tmp_path):
+        """After reconnect, fill_silence() is called with a non-negative gap."""
+        ch = _make_channel()
+        vc_disconnected = _make_vc(connected=False)
+        vc_reconnected = _make_vc(connected=True)
+        ch.connect = AsyncMock(return_value=vc_reconnected)
+
+        session = RecordingSession(ch, tmp_path)
+        session.vc = vc_disconnected
+        session._active = True
+        session._WATCHDOG_INTERVAL = 0
+
+        filled_durations: list[float] = []
+        orig_fill = session.sink.fill_silence
+
+        def capture_fill(d):
+            filled_durations.append(d)
+            orig_fill(d)
+
+        session.sink.fill_silence = capture_fill
+
+        task = asyncio.create_task(session._watchdog())
+        await asyncio.sleep(0.05)
+        session._active = False
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+        assert len(filled_durations) >= 1
+        assert filled_durations[0] >= 0.0
+
+    @pytest.mark.asyncio
+    async def test_watchdog_notifies_discord_on_reconnect(self, tmp_path):
+        """After reconnect, notify_channel.send() is called with the expected message."""
+        ch = _make_channel()
+        vc_disconnected = _make_vc(connected=False)
+        vc_reconnected = _make_vc(connected=True)
+        ch.connect = AsyncMock(return_value=vc_reconnected)
+
+        notify_ch = MagicMock()
+        notify_ch.send = AsyncMock()
+
+        session = RecordingSession(ch, tmp_path, notify_channel=notify_ch)
+        session.vc = vc_disconnected
+        session._active = True
+        session._WATCHDOG_INTERVAL = 0
+
+        task = asyncio.create_task(session._watchdog())
+        await asyncio.sleep(0.05)
+        session._active = False
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await asyncio.sleep(0)  # flush created tasks
+
+        notify_ch.send.assert_called_once()
+        msg = notify_ch.send.call_args[0][0]
+        assert "Verbindung" in msg or "unterbrochen" in msg
+
+    @pytest.mark.asyncio
+    async def test_watchdog_no_discord_without_notify_channel(self, tmp_path):
+        """No notify_channel → reconnect succeeds without error."""
+        ch = _make_channel()
+        vc_disconnected = _make_vc(connected=False)
+        vc_reconnected = _make_vc(connected=True)
+        ch.connect = AsyncMock(return_value=vc_reconnected)
+
+        session = RecordingSession(ch, tmp_path)  # no notify_channel
+        session.vc = vc_disconnected
+        session._active = True
+        session._WATCHDOG_INTERVAL = 0
+
+        task = asyncio.create_task(session._watchdog())
+        await asyncio.sleep(0.05)
+        session._active = False
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+        ch.connect.assert_called()  # did reconnect without crashing
+
+
+# ---------------------------------------------------------------------------
+# notify_channel plumbed through RecordingSession constructor
+# ---------------------------------------------------------------------------
+
+class TestNotifyChannel:
+    def test_notify_channel_stored(self, tmp_path):
+        ch = _make_channel()
+        notify = MagicMock()
+        session = RecordingSession(ch, tmp_path, notify_channel=notify)
+        assert session.notify_channel is notify
+
+    def test_no_notify_channel_defaults_to_none(self, tmp_path):
+        session = RecordingSession(_make_channel(), tmp_path)
+        assert session.notify_channel is None
