@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPG Session — {{ session_id }}</title>
+  <style>
+    /* ── Reset & variables ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #121212;
+      --bg-surface: #1e1e1e;
+      --bg-card:    #2a2a2a;
+      --border:     #333;
+      --text:       #e0e0e0;
+      --text-muted: #888;
+      --accent:     #4fc3f7;
+      --radius:     6px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .session-meta {
+      display: flex;
+      gap: 16px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .session-meta span::before { content: "·"; margin-right: 8px; }
+    .session-meta span:first-child::before { display: none; }
+
+    /* ── Speaker legend ─────────────────────────────────────────────── */
+    .speaker-legend {
+      display: flex;
+      gap: 12px;
+      padding: 8px 20px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Main layout ─────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Player panel ────────────────────────────────────────────────── */
+    .player-panel {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-right: 1px solid var(--border);
+    }
+
+    #waveform {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      min-height: 80px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+
+    .btn:hover { background: #3a3a3a; }
+    .btn.active { background: var(--accent); color: #000; }
+
+    #time-display {
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+    }
+
+    /* ── Downloads ───────────────────────────────────────────────────── */
+    .downloads {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .downloads h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .download-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .download-link {
+      display: inline-block;
+      padding: 4px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+
+    .download-link:hover { background: #3a3a3a; }
+
+    /* ── Transcript panel ────────────────────────────────────────────── */
+    .transcript-panel {
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .segment {
+      padding: 8px 10px;
+      border-left: 3px solid transparent;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      background: var(--bg-card);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .segment:hover { background: #333; }
+
+    .segment.active {
+      background: #2d3a40;
+    }
+
+    .segment-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 3px;
+    }
+
+    .speaker-label {
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .timestamp {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .segment-text {
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; }
+      .transcript-panel { max-height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>RPG Session: {{ session_id }}</h1>
+  <div class="session-meta">
+    <span>{{ session_date }}</span>
+    <span>{{ duration }}</span>
+    <span>{{ speakers | join(", ") }}</span>
+  </div>
+</header>
+
+<div class="speaker-legend">
+  {% for speaker in speakers %}
+  <div class="legend-item">
+    <div class="legend-dot" style="background: {{ speaker_colors[speaker] }};"></div>
+    <span>{{ speaker }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<main>
+  <!-- ── Player panel ─────────────────────────────────────────────── -->
+  <div class="player-panel">
+    <div id="waveform"></div>
+
+    <div class="controls">
+      <button class="btn" id="btn-play">▶ Play</button>
+      <span id="time-display">0:00 / {{ duration }}</span>
+    </div>
+
+    {% if flac_links or audio_file %}
+    <div class="downloads">
+      <h3>Downloads</h3>
+      <div class="download-links">
+        {% if audio_file %}
+        <a class="download-link" href="{{ audio_file }}" download>⬇ Downmix (MP3)</a>
+        {% endif %}
+        {% for link in flac_links %}
+        <a class="download-link" href="{{ link.filename }}" download>⬇ {{ link.speaker }} (FLAC)</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Transcript panel ─────────────────────────────────────────── -->
+  <div class="transcript-panel" id="transcript-panel">
+    {% for seg in transcript %}
+    <div class="segment"
+         data-start="{{ seg.start }}"
+         data-end="{{ seg.end }}"
+         data-index="{{ loop.index0 }}"
+         style="border-left-color: {{ speaker_colors[seg.speaker] }};">
+      <div class="segment-header">
+        <span class="speaker-label" style="color: {{ speaker_colors[seg.speaker] }};">{{ seg.speaker }}</span>
+        <span class="timestamp">{{ seg.start | format_time }}</span>
+      </div>
+      <div class="segment-text">{{ seg.text }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</main>
+
+<script src="./assets/wavesurfer.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ── Data from server ───────────────────────────────────────────── */
+  const PEAKS    = {{ peaks_json }};
+  const DURATION = {{ duration_secs }};
+  const AUDIO    = {{ audio_file | tojson }};
+
+  /* ── Speaker colors ─────────────────────────────────────────────── */
+  const SPEAKER_COLORS = {{ speaker_colors | tojson }};
+
+  /* ── Wavesurfer init ────────────────────────────────────────────── */
+  const wsOpts = {
+    container:     "#waveform",
+    waveColor:     "#4fc3f7",
+    progressColor: "#0288d1",
+    cursorColor:   "#81c784",
+    height:        80,
+    normalize:     true,
+  };
+
+  if (AUDIO) {
+    wsOpts.url = AUDIO;
+  }
+
+  if (PEAKS && PEAKS.length > 0) {
+    wsOpts.peaks    = [PEAKS];
+    wsOpts.duration = DURATION;
+  }
+
+  const wavesurfer = WaveSurfer.create(wsOpts);
+
+  /* ── Play / pause button ────────────────────────────────────────── */
+  const btnPlay = document.getElementById("btn-play");
+  btnPlay.addEventListener("click", () => wavesurfer.playPause());
+
+  wavesurfer.on("play",  () => { btnPlay.textContent = "⏸ Pause"; btnPlay.classList.add("active"); });
+  wavesurfer.on("pause", () => { btnPlay.textContent = "▶ Play";  btnPlay.classList.remove("active"); });
+
+  /* ── Time display ───────────────────────────────────────────────── */
+  const timeDisplay = document.getElementById("time-display");
+  const fmtTime = s => {
+    const t = Math.floor(s);
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const sec = t % 60;
+    if (h) return `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+    return `${m}:${String(sec).padStart(2,"0")}`;
+  };
+
+  wavesurfer.on("audioprocess", time => {
+    timeDisplay.textContent = `${fmtTime(time)} / {{ duration }}`;
+    highlightActive(time);
+  });
+  wavesurfer.on("seeking", time => {
+    timeDisplay.textContent = `${fmtTime(time)} / {{ duration }}`;
+    highlightActive(time);
+  });
+
+  /* ── Transcript click → seek ────────────────────────────────────── */
+  const segments = document.querySelectorAll(".segment");
+  segments.forEach(el => {
+    el.addEventListener("click", () => {
+      const start = parseFloat(el.dataset.start);
+      const dur   = DURATION > 0 ? DURATION : wavesurfer.getDuration();
+      if (dur > 0) {
+        wavesurfer.seekTo(start / dur);
+      }
+      wavesurfer.play();
+    });
+  });
+
+  /* ── Auto-scroll transcript to active segment ───────────────────── */
+  function highlightActive(currentTime) {
+    let active = null;
+    segments.forEach(el => {
+      const start = parseFloat(el.dataset.start);
+      const end   = parseFloat(el.dataset.end);
+      if (currentTime >= start && currentTime < end) {
+        el.classList.add("active");
+        active = el;
+      } else {
+        el.classList.remove("active");
+      }
+    });
+    if (active) {
+      active.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+})();
+</script>
+
+</body>
+</html>
