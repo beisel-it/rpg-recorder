@@ -47,17 +47,20 @@ Discord Voice  ──►  discord.py + discord-ext-voice-receive
 ## 🚀 Setup
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/beisel-it/rpg-recorder.git
-cd rpg-recorder
-pip install -r requirements.txt
+# 1. Clone into home directory (expected by the service file)
+git clone https://github.com/beisel-it/rpg-recorder.git ~/rpg-recorder
+cd ~/rpg-recorder
 
-# 2. Configure
+# 2. Create a virtualenv and install dependencies
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+
+# 3. Configure
 cp .env.example .env
 $EDITOR .env   # set DISCORD_TOKEN at minimum
 
-# 3. Run
-python -m bot
+# 4. Run once to verify
+venv/bin/python -m bot
 ```
 
 Expected output when online:
@@ -65,6 +68,54 @@ Expected output when online:
 ```
 2026-01-01 12:00:00  INFO  rpg-recorder — Logged in as YourBot#1234 — Ready
 ```
+
+---
+
+## 🔄 Deployment (systemd user service)
+
+The bot ships with a ready-made systemd **user** service so it starts automatically on login and restarts on crash.
+
+### First-time install
+
+```bash
+# Copy the unit file into your user service directory
+mkdir -p ~/.config/systemd/user
+cp ~/rpg-recorder/deploy/rpg-recorder.service ~/.config/systemd/user/
+
+# Reload systemd and enable the service
+systemctl --user daemon-reload
+systemctl --user enable rpg-recorder
+
+# Start it
+systemctl --user start rpg-recorder
+
+# Verify it is running
+systemctl --user status rpg-recorder
+journalctl --user -u rpg-recorder -f
+```
+
+### Updating (subsequent deploys)
+
+```bash
+# Pull latest code, reinstall deps, restart the service
+~/rpg-recorder/scripts/deploy.sh
+```
+
+The deploy script does:
+1. `git pull --ff-only` in the repo directory
+2. `pip install -r requirements.txt` via the venv Python
+3. `systemctl --user restart rpg-recorder`
+
+### Environment variables in the service
+
+The unit file sets default paths via `Environment=`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `SESSIONS_DIR` | `~/rpg-recorder/sessions` | Where session folders are created |
+| `LOG_DIR` | `~/.local/share/rpg-recorder/logs` | Log file directory |
+
+Override them in your `.env` file (loaded via `EnvironmentFile=`).
 
 ---
 
@@ -107,6 +158,8 @@ rpg-recorder/
 ├── bot/                  # Discord bot core
 ├── pipeline/             # Whisper + ffmpeg + HTML generation
 ├── web/                  # Wavesurfer.js templates
+├── deploy/               # systemd unit file
+├── scripts/              # deploy.sh + helper scripts
 ├── tasks/                # Project task tracking
 │   ├── research/
 │   ├── code/
