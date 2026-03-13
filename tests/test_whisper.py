@@ -227,36 +227,49 @@ def test_whisper_long_audio_split_into_chunks(tmp_path, monkeypatch):
     """Audio longer than CHUNK_SECONDS is split; model.transcribe called once per chunk."""
     import bot.transcribe as transcribe_mod
     from bot.transcribe import transcribe
+    import sys
 
-    # Patch CHUNK_SECONDS to 2s so a 5s file produces 3 chunks
-    monkeypatch.setattr(transcribe_mod, "CHUNK_SECONDS", 2)
+    # Patch CHUNK_SECONDS small enough that our fake audio triggers 3 chunks
+    SAMPLE_RATE = 10
+    monkeypatch.setattr(transcribe_mod, "CHUNK_SECONDS", 1)  # 1s chunks
 
-    # Create a 5s WAV file
-    wav_path = tmp_path / "long.wav"
-    sample_rate = 16_000
-    n_samples = 5 * sample_rate
-    import struct
-    pcm = struct.pack(f"<{n_samples}h", *([0] * n_samples))
-    with wave.open(str(wav_path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm)
+    # Return a 3-second fake audio (30 samples at rate=10) → 3 chunks
+    class _LongAudio:
+        ndim = 1
+        size = 30  # 3 seconds * 10 samples/s
+        shape = (30,)
+        dtype = "float32"
+        def __len__(self): return self.size
+        def mean(self, axis=None): return self
+        def __getitem__(self, key):
+            sliced = _LongAudio()
+            if isinstance(key, slice):
+                start_ = key.start or 0
+                stop_ = min(key.stop or self.size, self.size)
+                sliced.size = max(0, stop_ - start_)
+                sliced.shape = (sliced.size,)
+            return sliced
+
+    sys.modules["soundfile"].read = MagicMock(return_value=(_LongAudio(), SAMPLE_RATE))
 
     call_count = 0
+    seg = MagicMock(); seg.start = 0.0; seg.end = 0.5; seg.text = "hi"
+    mock_model = _mock_model(seg)
+    original_transcribe = mock_model.transcribe
 
-    def fake_transcribe(chunk, **kwargs):
+    def counting_transcribe(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        return (iter([]), MagicMock())
+        return original_transcribe(*args, **kwargs)
 
-    mock_model = MagicMock()
-    mock_model.transcribe.side_effect = fake_transcribe
+    mock_model.transcribe = counting_transcribe
     monkeypatch.setattr(transcribe_mod, "_get_model", lambda: mock_model)
 
+    wav_path = tmp_path / "long.wav"
+    wav_path.write_bytes(b"fake")
     transcribe(wav_path, model=mock_model)
 
-    # 5s / 2s per chunk = 3 calls (chunks: 0-2s, 2-4s, 4-5s)
+    # 30 samples / 10 samples per second = 3 seconds / 1s per chunk = 3 calls
     assert call_count == 3
 
 
@@ -374,7 +387,8 @@ def test_get_model_uses_whisper_model_env(monkeypatch):
     monkeypatch.setattr(transcribe_mod, "WHISPER_MODEL", "tiny")
 
     mock_cls = MagicMock(return_value=MagicMock())
-    with patch("faster_whisper.WhisperModel", mock_cls):
+    # Patch inside the function's import scope, not the top-level module
+    with patch.dict("sys.modules", {"faster_whisper": MagicMock(WhisperModel=mock_cls)}):
         transcribe_mod._get_model()
 
     mock_cls.assert_called_once_with("tiny", device="auto", compute_type="auto")
