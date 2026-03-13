@@ -13,4 +13,10 @@ cd "$REPO_ROOT"
 # Provide a stub token if not already set (avoids bot.config KeyError in dev)
 export DISCORD_TOKEN="${DISCORD_TOKEN:-dev-dummy-token}"
 
-exec pytest "$@"
+# Prefer the project venv's pytest when available so all dependencies are found.
+PYTEST="${REPO_ROOT}/.venv/bin/pytest"
+if [[ ! -x "$PYTEST" ]]; then
+  PYTEST="pytest"
+fi
+
+exec "$PYTEST" "$@"
