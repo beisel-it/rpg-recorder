@@ -18,3 +18,7 @@ python-dotenv>=1.0.0
 
 # Audio conversion is handled via ffmpeg subprocess (must be installed on host)
 # apt install ffmpeg
+
+# Audio processing (used by transcribe.py)
+numpy>=1.24.0
+soundfile>=0.12.0
