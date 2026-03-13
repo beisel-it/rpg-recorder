@@ -1,0 +1,20 @@
+# RPG Recorder — Python dependencies
+#
+# DAVE enforcement (2026-03-02): Pycord/Disnake broken for voice.
+# Only discord.py (Rapptz) + discord-ext-voice-recv works.
+# discord.py must include DAVE support (PR #10300, merged ~Feb 2026).
+# Install via: pip install -r requirements.txt
+
+# Discord bot framework with voice + DAVE support
+# Pin to a release that includes PR #10300 (davey dependency)
+discord.py[voice]>=2.4.0
+
+# Per-speaker voice receive for discord.py
+# Alpha — only viable voice-receive option post-DAVE enforcement
+discord-ext-voice-recv>=0.4.2a145
+
+# Environment variable loading
+python-dotenv>=1.0.0
+
+# Audio conversion is handled via ffmpeg subprocess (must be installed on host)
+# apt install ffmpeg
