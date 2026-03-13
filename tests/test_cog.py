@@ -122,6 +122,25 @@ class TestRecordStart:
         assert "started" in ix.followup.send.call_args[0][0].lower()
 
     @pytest.mark.asyncio
+    async def test_start_passes_notify_channel(self):
+        """RecordingSession must be constructed with notify_channel=interaction.channel."""
+        cog = _make_cog()
+        ix = _make_interaction(guild_id=77)
+        # interaction.channel is a MagicMock attribute on ix
+        expected_channel = ix.channel
+
+        mock_session = MagicMock()
+        mock_session.start = AsyncMock()
+        mock_session.session_dir = MagicMock()
+        mock_session.session_dir.name = "session-77"
+
+        with patch("bot.cog.RecordingSession", return_value=mock_session) as mock_cls:
+            await cog.record_start.callback(cog, ix)
+
+        _, kwargs = mock_cls.call_args
+        assert kwargs.get("notify_channel") is expected_channel
+
+    @pytest.mark.asyncio
     async def test_start_session_exception_sends_error(self):
         cog = _make_cog()
         ix = _make_interaction()
