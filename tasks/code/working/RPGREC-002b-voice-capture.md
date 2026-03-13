@@ -2,7 +2,7 @@
 Shortcode: RPGREC-002b
 Epic: RPGREC-002
 Stage: code
-Status: ready for code
+Status: in progress
 Priority: P1
 Assigned: Wilbur
 Depends: RPGREC-002a
@@ -25,3 +25,4 @@ Estimated: 3h
 ## Comments
 - Das ist der kritischste Task — hier zeigt sich ob discord-ext-voice-recv + DAVE funktioniert
 - Branch: `feature/RPGREC-002b-voice`
+- Implementation started on branch feature/RPGREC-002b-voice

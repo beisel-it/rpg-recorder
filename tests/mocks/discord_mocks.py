@@ -84,8 +84,10 @@ class MockVoiceChannel:
     def __init__(self, name: str = "game-table") -> None:
         self.name = name
         self._vc = MockVoiceClient()
+        self.last_connect_cls: Any = None  # tracks cls= passed to connect()
 
     async def connect(self, *, cls: Any = None, **kwargs: Any) -> MockVoiceClient:
+        self.last_connect_cls = cls
         self._vc.set_connected(True)
         return self._vc
 

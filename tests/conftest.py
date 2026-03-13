@@ -25,6 +25,35 @@ from tests.mocks.discord_mocks import MockBot, MockVoiceClient
 
 
 # ---------------------------------------------------------------------------
+# Integration marker — tests requiring a live Discord connection
+# ---------------------------------------------------------------------------
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "integration: requires live Discord connection — auto-skipped in CI "
+        "(pass -m integration to run)",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Skip @pytest.mark.integration tests unless -m integration is explicit."""
+    # Only auto-skip when the user has NOT explicitly requested integration tests.
+    marker_expr = config.option.markexpr if hasattr(config.option, "markexpr") else ""
+    if "integration" in marker_expr:
+        return  # user asked for them — let them run
+    skip = pytest.mark.skip(
+        reason="integration test — needs live Discord; run with: pytest -m integration"
+    )
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip)
+
+
+# ---------------------------------------------------------------------------
 # Discord mocks
 # ---------------------------------------------------------------------------
 
