@@ -1,0 +1,6 @@
+[
+  {"speaker": "Alice", "start": 0.0,  "end": 3.5,  "text": "Let's roll for initiative."},
+  {"speaker": "Bob",   "start": 4.0,  "end": 7.2,  "text": "I got a 17, plus four, so 21."},
+  {"speaker": "Alice", "start": 8.1,  "end": 11.3, "text": "The goblin lunges at you with a rusty blade."},
+  {"speaker": "GM",    "start": 12.0, "end": 15.8, "text": "Roll to hit. You need to beat a 14."}
+]
