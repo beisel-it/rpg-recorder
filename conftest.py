@@ -12,6 +12,9 @@ the production code references; they do *not* implement any behaviour.
 """
 
 from __future__ import annotations
+import os
+os.environ.setdefault("DISCORD_TOKEN", "test-token-ci")
+os.environ.setdefault("SESSIONS_DIR", "/tmp/rpg-test-sessions")
 
 import sys
 import types
