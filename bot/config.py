@@ -31,6 +31,9 @@ GUILD_ID: int | None = int(_guild_id_raw) if _guild_id_raw else None
 
 SESSIONS_DIR: Path = Path(os.getenv("SESSIONS_DIR", "sessions"))
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+# Role name required to use /record start and /record stop.
+# Set to None (unset) to allow everyone.
+RECORDER_ROLE_NAME: str | None = os.getenv("RECORDER_ROLE_NAME") or None
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +46,7 @@ class Config:
     guild_id: int | None
     sessions_dir: Path
     log_level: str
+    recorder_role_name: str | None
 
 
 config = Config(
@@ -50,4 +54,5 @@ config = Config(
     guild_id=GUILD_ID,
     sessions_dir=SESSIONS_DIR,
     log_level=LOG_LEVEL,
+    recorder_role_name=RECORDER_ROLE_NAME,
 )
