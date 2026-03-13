@@ -37,7 +37,7 @@ class RPGRecorderBot(commands.Bot):
         log.info("Slash commands synced to Discord")
 
     async def on_ready(self) -> None:
-        log.info("Logged in as %s (id=%d)", self.user, self.user.id)
+        log.info("Logged in as %s (id=%d) — Ready", self.user, self.user.id)
 
 
 async def main() -> None:
