@@ -67,11 +67,25 @@
       flex-wrap: wrap;
     }
 
-    .legend-item {
+    .filter-btn {
       display: flex;
       align-items: center;
       gap: 6px;
+      background: var(--bg-card);
+      border: 2px solid transparent;
+      border-radius: var(--radius);
+      color: var(--text);
+      cursor: pointer;
       font-size: 12px;
+      padding: 3px 10px;
+      transition: opacity 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+
+    .filter-btn:hover { background: #3a3a3a; }
+
+    .filter-btn.muted {
+      opacity: 0.35;
     }
 
     .legend-dot {
@@ -232,6 +246,33 @@
       background: #2d3a40;
     }
 
+    .segment.hidden { display: none; }
+
+    /* ── Transcript toolbar (search) ─────────────────────────────────── */
+    .transcript-toolbar {
+      padding: 8px 12px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 13px;
+      padding: 5px 10px;
+      outline: none;
+    }
+
+    .search-input:focus { border-color: var(--accent); }
+
+    .search-input::placeholder { color: var(--text-muted); }
+
     .segment-header {
       display: flex;
       align-items: baseline;
@@ -275,10 +316,11 @@
 
 <div class="speaker-legend">
   {% for speaker in speakers %}
-  <div class="legend-item">
-    <div class="legend-dot" style="background: {{ speaker_colors[speaker] }};"></div>
-    <span>{{ speaker }}</span>
-  </div>
+  <button class="filter-btn" data-speaker="{{ speaker }}"
+          style="border-color: {{ speaker_colors[speaker] }}; color: {{ speaker_colors[speaker] }};">
+    <span class="legend-dot" style="background: {{ speaker_colors[speaker] }};"></span>
+    {{ speaker }}
+  </button>
   {% endfor %}
 </div>
 
@@ -323,10 +365,16 @@
 
   <!-- ── Transcript panel ─────────────────────────────────────────── -->
   <div class="transcript-panel" id="transcript-panel">
+    <div class="transcript-toolbar">
+      <input type="search" id="transcript-search" class="search-input"
+             placeholder="Search transcript…" aria-label="Search transcript">
+    </div>
+    <div class="segments-list" id="segments-list">
     {% for seg in transcript %}
     <div class="segment"
          data-start="{{ seg.start }}"
          data-end="{{ seg.end }}"
+         data-speaker="{{ seg.speaker }}"
          data-index="{{ loop.index0 }}"
          style="border-left-color: {{ speaker_colors[seg.speaker] }};">
       <div class="segment-header">
@@ -336,6 +384,7 @@
       <div class="segment-text">{{ seg.text }}</div>
     </div>
     {% endfor %}
+    </div>
   </div>
 </main>
 
@@ -463,6 +512,38 @@
     if (active) {
       active.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
+  }
+
+  /* ── Speaker filter ─────────────────────────────────────────────── */
+  const mutedSpeakers = new Set();
+
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const sp = btn.dataset.speaker;
+      if (mutedSpeakers.has(sp)) {
+        mutedSpeakers.delete(sp);
+        btn.classList.remove("muted");
+      } else {
+        mutedSpeakers.add(sp);
+        btn.classList.add("muted");
+      }
+      applyFilters();
+    });
+  });
+
+  /* ── Search / text filter ───────────────────────────────────────── */
+  const searchInput = document.getElementById("transcript-search");
+  searchInput.addEventListener("input", applyFilters);
+
+  function applyFilters() {
+    const query = searchInput.value.toLowerCase();
+    segments.forEach(el => {
+      const sp          = el.dataset.speaker;
+      const text        = el.querySelector(".segment-text").textContent.toLowerCase();
+      const speakerOk   = !mutedSpeakers.has(sp);
+      const searchOk    = !query || text.includes(query);
+      el.classList.toggle("hidden", !(speakerOk && searchOk));
+    });
   }
 
 })();
