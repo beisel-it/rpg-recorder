@@ -207,7 +207,19 @@ async def _run_steps(
     result["html_path"] = html_path
 
     # ------------------------------------------------------------------
-    # Step 4: Discord completion message
+    # Step 4: Rebuild session index
+    # ------------------------------------------------------------------
+    sessions_dir = session_dir.parent
+    try:
+        from .session_index import build_index  # noqa: PLC0415
+
+        build_index(sessions_dir)
+        log.info("[%s] Session index rebuilt.", session_name)
+    except Exception:
+        log.warning("[%s] Session index rebuild failed (non-fatal).", session_name, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Step 5: Discord completion message
     # ------------------------------------------------------------------
     url = f"{SESSION_URL_BASE}{session_name}/"
     summary = (
