@@ -235,6 +235,87 @@ def test_empty_peaks_when_no_file(html: str) -> None:
     assert "const PEAKS    = [];" in html
 
 
+def test_peaks_json_full_array_embedded(session_dir: Path) -> None:
+    """All values from peaks.json are embedded verbatim in the page script."""
+    import json
+    peaks_data = [0.1, 0.5, 0.3, 0.8, 0.2, 0.9]
+    (session_dir / "peaks.json").write_text(json.dumps(peaks_data))
+    generate_session_html(session_dir, TRANSCRIPT, {})
+    html = (session_dir / "index.html").read_text()
+    assert json.dumps(peaks_data) in html
+
+
+# ---------------------------------------------------------------------------
+# RPGREC-004a: Keyboard shortcuts
+# ---------------------------------------------------------------------------
+
+
+def test_keyboard_space_shortcut_in_html(html: str) -> None:
+    """Space key triggers play/pause via a keydown listener."""
+    assert "keydown" in html
+    assert "Space" in html
+
+
+def test_keyboard_arrow_left_shortcut_in_html(html: str) -> None:
+    """ArrowLeft key is handled for skip-back."""
+    assert "ArrowLeft" in html
+
+
+def test_keyboard_arrow_right_shortcut_in_html(html: str) -> None:
+    """ArrowRight key is handled for skip-forward."""
+    assert "ArrowRight" in html
+
+
+def test_keyboard_shift_modifier_for_large_skip(html: str) -> None:
+    """Shift modifier triggers a larger skip (60 s)."""
+    assert "shiftKey" in html
+
+
+# ---------------------------------------------------------------------------
+# RPGREC-004a: Playback speed controls
+# ---------------------------------------------------------------------------
+
+
+def test_speed_buttons_present_in_html(html: str) -> None:
+    """Speed control buttons for 0.5, 1, 1.5, 2 are rendered."""
+    assert 'data-speed="0.5"' in html
+    assert 'data-speed="1"' in html
+    assert 'data-speed="1.5"' in html
+    assert 'data-speed="2"' in html
+
+
+def test_set_playback_rate_called_in_script(html: str) -> None:
+    """setPlaybackRate is wired to the speed buttons."""
+    assert "setPlaybackRate" in html
+
+
+# ---------------------------------------------------------------------------
+# RPGREC-004a: FLAC download links per speaker
+# ---------------------------------------------------------------------------
+
+
+def test_flac_download_links_have_speaker_names(session_dir: Path) -> None:
+    """Each FLAC download link shows the speaker's name as label."""
+    flac_paths = {
+        "Alice": session_dir / "alice.flac",
+        "Bob":   session_dir / "bob.flac",
+    }
+    generate_session_html(session_dir, TRANSCRIPT, flac_paths)
+    html = (session_dir / "index.html").read_text()
+    assert "Alice" in html
+    assert "Bob" in html
+    assert "alice.flac" in html
+    assert "bob.flac" in html
+
+
+def test_flac_download_links_have_download_attribute(session_dir: Path) -> None:
+    """FLAC download links carry the HTML download attribute."""
+    flac_paths = {"Alice": session_dir / "alice.flac"}
+    generate_session_html(session_dir, TRANSCRIPT, flac_paths)
+    html = (session_dir / "index.html").read_text()
+    assert "download" in html
+
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------

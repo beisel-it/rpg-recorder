@@ -125,6 +125,49 @@
     .btn:hover { background: #3a3a3a; }
     .btn.active { background: var(--accent); color: #000; }
 
+    /* ── Speed controls ──────────────────────────────────────────────── */
+    .speed-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .speed-label {
+      color: var(--text-muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .btn-speed {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+
+    .btn-speed:hover { background: #3a3a3a; }
+    .btn-speed.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+    /* ── Keyboard hint ───────────────────────────────────────────────── */
+    .kbd-hint {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .kbd-hint kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 10px;
+    }
+
     #time-display {
       color: var(--text-muted);
       font-variant-numeric: tabular-nums;
@@ -245,8 +288,22 @@
     <div id="waveform"></div>
 
     <div class="controls">
-      <button class="btn" id="btn-play">▶ Play</button>
+      <button class="btn" id="btn-play">&#9654; Play</button>
       <span id="time-display">0:00 / {{ duration }}</span>
+    </div>
+
+    <div class="speed-controls">
+      <span class="speed-label">Speed:</span>
+      <button class="btn-speed" data-speed="0.5">0.5&#xd7;</button>
+      <button class="btn-speed active" data-speed="1">1&#xd7;</button>
+      <button class="btn-speed" data-speed="1.5">1.5&#xd7;</button>
+      <button class="btn-speed" data-speed="2">2&#xd7;</button>
+    </div>
+
+    <div class="kbd-hint">
+      <kbd>Space</kbd> play/pause &nbsp;
+      <kbd>&#8592;</kbd><kbd>&#8594;</kbd> &#177;5s &nbsp;
+      <kbd>Shift</kbd>+<kbd>&#8592;</kbd><kbd>&#8594;</kbd> &#177;60s
     </div>
 
     {% if flac_links or audio_file %}
@@ -341,6 +398,40 @@
   wavesurfer.on("seeking", time => {
     timeDisplay.textContent = `${fmtTime(time)} / {{ duration }}`;
     highlightActive(time);
+  });
+
+  /* ── Speed controls ─────────────────────────────────────────────── */
+  document.querySelectorAll(".btn-speed").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const speed = parseFloat(btn.dataset.speed);
+      wavesurfer.setPlaybackRate(speed);
+      document.querySelectorAll(".btn-speed").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+
+  /* ── Keyboard shortcuts ─────────────────────────────────────────── */
+  document.addEventListener("keydown", e => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+    if (e.code === "Space") {
+      e.preventDefault();
+      wavesurfer.playPause();
+      return;
+    }
+
+    const dur = DURATION > 0 ? DURATION : (wavesurfer.getDuration() || 0);
+    if (dur === 0) return;
+
+    if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+      e.preventDefault();
+      const delta = e.shiftKey ? 60 : 5;
+      const cur   = wavesurfer.getCurrentTime();
+      const next  = e.code === "ArrowLeft"
+        ? Math.max(0, cur - delta)
+        : Math.min(dur, cur + delta);
+      wavesurfer.seekTo(next / dur);
+    }
   });
 
   /* ── Transcript click → seek ────────────────────────────────────── */
