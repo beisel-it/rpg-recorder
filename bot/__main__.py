@@ -12,7 +12,8 @@ import sys
 import discord
 from discord.ext import commands
 
-from .config import DISCORD_TOKEN, LOG_LEVEL
+from .autojoin import AutojoinCog
+from .config import AUTOJOIN_CHANNELS, DISCORD_TOKEN, LOG_LEVEL
 from .cog import RecordCog
 
 logging.basicConfig(
@@ -32,7 +33,11 @@ class RPGRecorderBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self) -> None:
-        await self.add_cog(RecordCog(self))
+        record_cog = RecordCog(self)
+        await self.add_cog(record_cog)
+        if AUTOJOIN_CHANNELS:
+            await self.add_cog(AutojoinCog(self, record_cog._sessions))
+            log.info("Autojoin enabled for channels: %s", AUTOJOIN_CHANNELS)
         await self.tree.sync()
         log.info("Slash commands synced to Discord")
 
