@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPG Sessions</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #121212;
+      --bg-surface: #1e1e1e;
+      --bg-card:    #2a2a2a;
+      --border:     #333;
+      --text:       #e0e0e0;
+      --text-muted: #888;
+      --accent:     #4fc3f7;
+      --radius:     6px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+      flex: 0 0 auto;
+    }
+
+    /* ── Search bar ───────────────────────────────────────────────────── */
+    #search-wrap {
+      flex: 1 1 260px;
+      max-width: 480px;
+    }
+
+    #search {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 13px;
+      padding: 6px 12px;
+      outline: none;
+    }
+
+    #search:focus { border-color: var(--accent); }
+
+    #search-count {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-left: 8px;
+    }
+
+    /* ── Main grid ────────────────────────────────────────────────────── */
+    main {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    /* ── Session card ─────────────────────────────────────────────────── */
+    .session-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s;
+    }
+
+    .session-card:hover { border-color: var(--accent); }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .card-speakers {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .card-speakers span {
+      display: inline-block;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 6px;
+      margin: 2px 2px 0 0;
+    }
+
+    /* ── No-results message ───────────────────────────────────────────── */
+    #no-results {
+      display: none;
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--text-muted);
+      padding: 48px 0;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>RPG Sessions</h1>
+  <div id="search-wrap">
+    <input id="search" type="search" placeholder="Search transcripts…" autocomplete="off">
+  </div>
+  <span id="search-count"></span>
+</header>
+
+<main id="card-grid">
+  {% for session in sessions %}
+  <a class="session-card" href="{{ session.link }}" data-id="{{ session.id }}">
+    <div class="card-title">{{ session.id }}</div>
+    <div class="card-meta">
+      <span>{{ session.date }}</span>
+      <span>{{ session.duration }}</span>
+    </div>
+    {% if session.speakers %}
+    <div class="card-speakers">
+      {% for speaker in session.speakers %}<span>{{ speaker }}</span>{% endfor %}
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+  <div id="no-results">No sessions match your search.</div>
+</main>
+
+<footer>{{ sessions | length }} session{{ 's' if sessions | length != 1 else '' }} · generated {{ generated_at }}</footer>
+
+<script src="assets/lunr.min.js"></script>
+<script>
+(function () {
+  // Search documents injected at build time
+  var DOCS = {{ search_docs_json }};
+
+  // Build lunr index
+  var idx = lunr(function () {
+    this.ref('id');
+    this.field('date');
+    this.field('speakers', { boost: 2 });
+    this.field('body');
+    this.metadataWhitelist = ['position'];
+    var self = this;
+    DOCS.forEach(function (doc) { self.add(doc); });
+  });
+
+  var cards = document.querySelectorAll('.session-card');
+  var noResults = document.getElementById('no-results');
+  var countEl = document.getElementById('search-count');
+
+  function showAll() {
+    cards.forEach(function (c) { c.style.display = ''; });
+    noResults.style.display = 'none';
+    countEl.textContent = '';
+  }
+
+  function applyFilter(query) {
+    if (!query.trim()) { showAll(); return; }
+    var results;
+    try {
+      results = idx.search(query);
+    } catch (e) {
+      results = [];
+    }
+    var matchIds = new Set(results.map(function (r) { return r.ref; }));
+    var visible = 0;
+    cards.forEach(function (c) {
+      if (matchIds.has(c.dataset.id)) {
+        c.style.display = '';
+        visible++;
+      } else {
+        c.style.display = 'none';
+      }
+    });
+    noResults.style.display = visible === 0 ? 'block' : 'none';
+    countEl.textContent = visible + ' result' + (visible !== 1 ? 's' : '');
+  }
+
+  document.getElementById('search').addEventListener('input', function () {
+    applyFilter(this.value);
+  });
+})();
+</script>
+
+</body>
+</html>
