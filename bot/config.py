@@ -39,6 +39,17 @@ RECORDER_ROLE_NAME: str | None = os.getenv("RECORDER_ROLE_NAME") or None
 WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "large-v3-turbo")
 WHISPER_INITIAL_PROMPT: str | None = os.getenv("WHISPER_INITIAL_PROMPT") or None
 
+# Autojoin settings (RPGREC-008)
+# Comma-separated list of voice channel IDs to monitor (empty = disabled)
+_autojoin_raw = os.getenv("AUTOJOIN_CHANNELS", "")
+AUTOJOIN_CHANNELS: list[int] = (
+    [int(cid.strip()) for cid in _autojoin_raw.split(",") if cid.strip()]
+    if _autojoin_raw.strip()
+    else []
+)
+# Minimum number of users in a channel before auto-recording starts
+AUTOJOIN_MIN_USERS: int = int(os.getenv("AUTOJOIN_MIN_USERS", "2"))
+
 
 # ---------------------------------------------------------------------------
 # Typed Config object
@@ -53,6 +64,8 @@ class Config:
     recorder_role_name: str | None
     whisper_model: str
     whisper_initial_prompt: str | None
+    autojoin_channels: list[int]
+    autojoin_min_users: int
 
 
 config = Config(
@@ -63,4 +76,6 @@ config = Config(
     recorder_role_name=RECORDER_ROLE_NAME,
     whisper_model=WHISPER_MODEL,
     whisper_initial_prompt=WHISPER_INITIAL_PROMPT,
+    autojoin_channels=AUTOJOIN_CHANNELS,
+    autojoin_min_users=AUTOJOIN_MIN_USERS,
 )
