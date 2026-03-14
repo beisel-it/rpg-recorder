@@ -256,10 +256,19 @@
       position: sticky;
       top: 0;
       z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .search-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .search-input {
-      width: 100%;
+      flex: 1;
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -272,6 +281,33 @@
     .search-input:focus { border-color: var(--accent); }
 
     .search-input::placeholder { color: var(--text-muted); }
+
+    .search-count {
+      color: var(--text-muted);
+      font-size: 11px;
+      white-space: nowrap;
+      min-width: 80px;
+      text-align: right;
+    }
+
+    /* ── Export buttons ──────────────────────────────────────────────── */
+    .export-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-export {
+      background: var(--bg-card);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 3px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: background 0.15s;
+    }
+
+    .btn-export:hover { background: #3a3a3a; }
 
     .segment-header {
       display: flex;
@@ -345,7 +381,9 @@
     <div class="kbd-hint">
       <kbd>Space</kbd> play/pause &nbsp;
       <kbd>&#8592;</kbd><kbd>&#8594;</kbd> &#177;5s &nbsp;
-      <kbd>Shift</kbd>+<kbd>&#8592;</kbd><kbd>&#8594;</kbd> &#177;60s
+      <kbd>Shift</kbd>+<kbd>&#8592;</kbd><kbd>&#8594;</kbd> &#177;60s &nbsp;
+      <kbd>/</kbd> search &nbsp;
+      <kbd>Esc</kbd> clear
     </div>
 
     {% if flac_links or audio_file %}
@@ -366,8 +404,15 @@
   <!-- ── Transcript panel ─────────────────────────────────────────── -->
   <div class="transcript-panel" id="transcript-panel">
     <div class="transcript-toolbar">
-      <input type="search" id="transcript-search" class="search-input"
-             placeholder="Search transcript…" aria-label="Search transcript">
+      <div class="search-row">
+        <input type="search" id="transcript-search" class="search-input"
+               placeholder="Search transcript… (press / to focus)" aria-label="Search transcript">
+        <span class="search-count" id="search-count" aria-live="polite"></span>
+      </div>
+      <div class="export-row">
+        <button class="btn-export" id="btn-export-txt" title="Export filtered transcript as plain text">⬇ .txt</button>
+        <button class="btn-export" id="btn-export-srt" title="Export filtered transcript as SRT subtitles">⬇ .srt</button>
+      </div>
     </div>
     <div class="segments-list" id="segments-list">
     {% for seg in transcript %}
@@ -440,6 +485,19 @@
     return `${m}:${String(sec).padStart(2,"0")}`;
   };
 
+  const fmtTimeFull = s => {
+    const t = Math.floor(s);
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const sec = t % 60;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  };
+
+  const fmtSrtTime = s => {
+    const ms = Math.round((s - Math.floor(s)) * 1000);
+    return `${fmtTimeFull(s)},${String(ms).padStart(3,"0")}`;
+  };
+
   wavesurfer.on("audioprocess", time => {
     timeDisplay.textContent = `${fmtTime(time)} / {{ duration }}`;
     highlightActive(time);
@@ -460,7 +518,24 @@
   });
 
   /* ── Keyboard shortcuts ─────────────────────────────────────────── */
+  const searchInput = document.getElementById("transcript-search");
+
   document.addEventListener("keydown", e => {
+    // "/" focuses the search box (unless already in a text input)
+    if (e.key === "/" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+      e.preventDefault();
+      searchInput.focus();
+      return;
+    }
+
+    // Escape clears and blurs the search box from anywhere
+    if (e.key === "Escape") {
+      searchInput.value = "";
+      searchInput.blur();
+      applyFilters();
+      return;
+    }
+
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
     if (e.code === "Space") {
@@ -532,19 +607,105 @@
   });
 
   /* ── Search / text filter ───────────────────────────────────────── */
-  const searchInput = document.getElementById("transcript-search");
   searchInput.addEventListener("input", applyFilters);
+
+  /* ── Result count ───────────────────────────────────────────────── */
+  const searchCount = document.getElementById("search-count");
 
   function applyFilters() {
     const query = searchInput.value.toLowerCase();
+    let visible = 0;
+    const total = segments.length;
     segments.forEach(el => {
       const sp          = el.dataset.speaker;
       const text        = el.querySelector(".segment-text").textContent.toLowerCase();
       const speakerOk   = !mutedSpeakers.has(sp);
       const searchOk    = !query || text.includes(query);
-      el.classList.toggle("hidden", !(speakerOk && searchOk));
+      const show        = speakerOk && searchOk;
+      el.classList.toggle("hidden", !show);
+      if (show) visible++;
     });
+    searchCount.textContent = (query || mutedSpeakers.size > 0)
+      ? `${visible} of ${total} segments`
+      : `${total} segments`;
   }
+
+  // Initialise count on load
+  applyFilters();
+
+  /* ── URL hash deep-linking ──────────────────────────────────────── */
+  function applyUrlHash() {
+    const raw = window.location.hash.slice(1);
+    if (!raw) return;
+    const params = new URLSearchParams(raw);
+
+    const speaker = params.get("speaker");
+    if (speaker !== null) {
+      document.querySelectorAll(".filter-btn").forEach(btn => {
+        if (btn.dataset.speaker !== speaker) {
+          mutedSpeakers.add(btn.dataset.speaker);
+          btn.classList.add("muted");
+        }
+      });
+      applyFilters();
+    }
+
+    const t = params.get("t");
+    if (t !== null) {
+      const time = parseFloat(t);
+      const dur  = DURATION > 0 ? DURATION : (wavesurfer.getDuration() || 0);
+      if (dur > 0) {
+        wavesurfer.seekTo(time / dur);
+      } else {
+        // Defer until wavesurfer is ready
+        wavesurfer.once("ready", () => {
+          const d = wavesurfer.getDuration() || 0;
+          if (d > 0) wavesurfer.seekTo(time / d);
+        });
+      }
+    }
+  }
+
+  applyUrlHash();
+  window.addEventListener("hashchange", applyUrlHash);
+
+  /* ── Export helpers ─────────────────────────────────────────────── */
+  function triggerDownload(filename, content, mimeType) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([content], { type: mimeType }));
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }
+
+  function visibleSegments() {
+    return [...segments].filter(el => !el.classList.contains("hidden"));
+  }
+
+  /* ── Export .txt ────────────────────────────────────────────────── */
+  document.getElementById("btn-export-txt").addEventListener("click", () => {
+    const lines = visibleSegments().map(el => {
+      const start   = parseFloat(el.dataset.start);
+      const speaker = el.dataset.speaker;
+      const text    = el.querySelector(".segment-text").textContent.trim();
+      return `[${fmtTimeFull(start)} ${speaker}] ${text}`;
+    });
+    triggerDownload("transcript.txt", lines.join("\n"), "text/plain");
+  });
+
+  /* ── Export .srt ────────────────────────────────────────────────── */
+  document.getElementById("btn-export-srt").addEventListener("click", () => {
+    const blocks = visibleSegments().map((el, i) => {
+      const start   = parseFloat(el.dataset.start);
+      const end     = parseFloat(el.dataset.end);
+      const speaker = el.dataset.speaker;
+      const text    = el.querySelector(".segment-text").textContent.trim();
+      return `${i + 1}\n${fmtSrtTime(start)} --> ${fmtSrtTime(end)}\n${speaker}: ${text}`;
+    });
+    triggerDownload("transcript.srt", blocks.join("\n\n"), "text/plain");
+  });
 
 })();
 </script>
